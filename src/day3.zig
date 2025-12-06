@@ -15,19 +15,27 @@ pub fn main() !void {
 
     var bateries: BateryBankIterator = .init(content);
 
-    var jolts: u64 = 0;
+    var part1: u64 = 0;
+    var part2: u64 = 0;
+
     while (bateries.next_batery()) |bank| {
-        var indices: [12]usize = undefined;
-        find_biggest_indices(bank, &indices);
-        const value = sum_indices(bank, &indices);
-        std.debug.print("{s} | ", .{bank});
-        for (indices) |index| {
-            std.debug.print("{d} -> {c} | ", .{ index, bank[index] });
-        }
-        std.debug.print("{d}\n", .{value});
-        jolts += value;
+        part1 += best_value_for_2(bank);
+        part2 += best_value_for_12(bank);
     }
-    std.debug.print("Solution: {d}\n", .{jolts});
+
+    std.debug.print("Part 1: {d}\nPart 2: {d}\n", .{ part1, part2 });
+}
+
+fn best_value_for_2(number: []const u8) u64 {
+    var indices: [2]usize = undefined;
+    find_biggest_indices(number, &indices);
+    return sum_indices(number, &indices);
+}
+
+fn best_value_for_12(number: []const u8) u64 {
+    var indices: [12]usize = undefined;
+    find_biggest_indices(number, &indices);
+    return sum_indices(number, &indices);
 }
 
 pub fn sum_indices(number: []const u8, indices: []const usize) u64 {
