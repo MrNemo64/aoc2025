@@ -30,41 +30,60 @@ const Range = struct {
 };
 
 pub fn analyze_range(range: Range, part_one_solution: *u64, part_two_solution: *u64) void {
-    for (range.min..range.max) |value| {
+    var value = range.min;
+    while (value <= range.max) : (value += 1) {
         var buffer: [64]u8 = undefined;
-        const length = std.fmt.printInt(&buffer, value, 10, .lower, .{});
-        if (is_symetric(buffer[0..length])) {
+        const len = std.fmt.printInt(&buffer, value, 10, .lower, .{});
+
+        const str = buffer[0..len];
+
+        if (is_symetric(str)) {
             part_one_solution.* += value;
         }
 
-        if (is_repeating(buffer[0..length])) {
+        if (is_repeating(str)) {
             part_two_solution.* += value;
         }
     }
 }
 
-pub fn chunks_equal(str: []u8, chunk_size: u64) bool {
-    var equal = true;
-    for (0..str.len / chunk_size) |i| {
-        equal &= std.mem.eql(u8, str[0..chunk_size], str[chunk_size * i .. chunk_size * (i + 1)]);
+pub fn chunks_equal(str: []const u8, chunk_size: usize) bool {
+    const first = str[0..chunk_size];
+    var i: usize = 1;
+    const count = str.len / chunk_size;
+
+    while (i < count) : (i += 1) {
+        const start = i * chunk_size;
+        const end = start + chunk_size;
+        if (!std.mem.eql(u8, first, str[start..end])) {
+            return false;
+        }
     }
-    return equal;
+    return true;
 }
 
-pub fn is_repeating(number: []u8) bool {
+pub fn is_repeating(number: []const u8) bool {
     if (number.len < 2) {
         return false;
     }
-    for (1..(number.len / 2) + 1) |sub_part| {
-        if (number.len % sub_part == 0 and chunks_equal(number, sub_part)) {
+
+    const max_chunk = number.len / 2;
+    var chunk_size: usize = 1;
+    while (chunk_size <= max_chunk) : (chunk_size += 1) {
+        if (number.len % chunk_size == 0 and chunks_equal(number, chunk_size)) {
             return true;
         }
     }
     return false;
 }
 
-pub fn is_symetric(number: []u8) bool {
-    return std.mem.eql(u8, number[0 .. number.len / 2], number[number.len / 2 .. number.len]);
+pub fn is_symetric(number: []const u8) bool {
+    if (number.len % 2 != 0) {
+        return false;
+    }
+
+    const half = number.len / 2;
+    return std.mem.eql(u8, number[0..half], number[half..]);
 }
 
 const RangeIterator = struct {
