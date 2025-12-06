@@ -30,4 +30,5 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     addDay("day1", b, &target, &optimize);
     addDay("day2", b, &target, &optimize);
+    addDay("day3", b, &target, &optimize);
 }
