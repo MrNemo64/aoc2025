@@ -27,7 +27,7 @@ pub fn main() !void {
         std.debug.print("{d}\n", .{value});
         jolts += value;
     }
-    std.debug.print("{d}\n", .{jolts});
+    std.debug.print("Solution: {d}\n", .{jolts});
 }
 
 pub fn sum_indices(number: []const u8, indices: []const usize) u64 {
