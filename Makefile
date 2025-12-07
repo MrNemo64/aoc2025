@@ -1,3 +1,6 @@
+day4:
+	zig build run-day4 -- ./src/day4.in
+
 day3:
 	zig build run-day3 -- ./src/day3.in
 
