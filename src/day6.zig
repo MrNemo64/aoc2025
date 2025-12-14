@@ -18,8 +18,8 @@ pub fn main() !void {
         for (problems_part_one) |*problem| {
             problem.numbers.deinit(alloc);
         }
+        alloc.free(problems_part_one);
     }
-    defer alloc.free(problems_part_one);
 
     var part_one: isize = 0;
     for (problems_part_one) |problem| {
@@ -33,8 +33,8 @@ pub fn main() !void {
         for (problems_part_two) |*problem| {
             problem.numbers.deinit(alloc);
         }
+        alloc.free(problems_part_two);
     }
-    defer alloc.free(problems_part_two);
 
     var part_two: isize = 0;
     for (problems_part_two) |problem| {
