@@ -84,11 +84,11 @@ fn descend(memory: *std.AutoHashMap(Key, usize), lines: []const []const u8, posi
         if (lines.len == 0) {
             splits = 1;
         } else {
-            if (lines[0][position] == '^' and lines.len > 0) {
+            if (lines[0][position] == '^') {
                 if (position > 0) {
                     splits += try descend(memory, lines[1..], position - 1, line + 1);
                 }
-                if (position < lines[0].len) {
+                if (position + 1 < lines[0].len) {
                     splits += try descend(memory, lines[1..], position + 1, line + 1);
                 }
             } else {
