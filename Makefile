@@ -1,3 +1,6 @@
+day8:
+	zig build run-day8 -- ./src/day8.in
+
 day7:
 	zig build run-day7 -- ./src/day7.in
 
@@ -18,3 +21,6 @@ day2:
 
 day1:
 	zig build run-day1 -- ./src/day1.in
+
+build:
+	zig build --release=fast

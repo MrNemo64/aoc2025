@@ -35,4 +35,5 @@ pub fn build(b: *std.Build) void {
     addDay("day5", b, &target, &optimize);
     addDay("day6", b, &target, &optimize);
     addDay("day7", b, &target, &optimize);
+    addDay("day8", b, &target, &optimize);
 }
