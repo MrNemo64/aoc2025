@@ -94,13 +94,11 @@ const DisjointSetUnion = struct {
         }
     }
 
-    fn computeSetSizes(self: *const DisjointSetUnion, alloc: std.mem.Allocator) ![]usize {
+    fn computeSetSizes(self: *DisjointSetUnion, alloc: std.mem.Allocator) ![]usize {
         var sizes = try alloc.alloc(usize, self.parents.len);
-        for (sizes) |*s| {
-            s.* = 0;
-        }
-        for (self.parents) |p| {
-            sizes[p] += 1;
+        @memset(sizes, 0);
+        for (0..self.parents.len) |i| {
+            sizes[self.find(i)] += 1;
         }
         return sizes;
     }
