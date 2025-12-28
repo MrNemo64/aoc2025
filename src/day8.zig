@@ -13,156 +13,110 @@ pub fn main() !void {
     const content = try std.fs.cwd().readFileAlloc(alloc, file_path, 64 * 1024);
     defer alloc.free(content);
 
-    var grid = try parse_nodes(alloc, content);
-    defer grid.deinit(alloc);
-    std.debug.print("Loaded {d} nodes\n", .{grid.nodes.len});
+    const nodes = try loadNodes(alloc, content);
+    defer alloc.free(nodes);
 
-    for (0..999) |i| {
-        const start_link = std.time.nanoTimestamp();
-        const nodes = grid.connect_closest().?;
-        const end_link = std.time.nanoTimestamp();
-        const time_diff: f64 = @floatFromInt(end_link - start_link);
-        const time_s = time_diff / 1e9;
+    const ds = try distances(alloc, nodes);
+    defer alloc.free(ds);
 
-        const a = grid.nodes[nodes.@"0"];
-        const b = grid.nodes[nodes.@"1"];
-        std.debug.print("{d} Connected ({d}, {d}, {d}) and ({d}, {d}, {d}) in {d} s\n", .{ i, a.x, a.y, a.z, b.x, b.y, b.z, time_s });
-    }
-    const circuits = try grid.compute_circuits(alloc);
-    defer {
-        for (circuits) |c| {
-            alloc.free(c);
-        }
-        alloc.free(circuits);
-    }
+    var dsu = try DisjointSetUnion.init(alloc, nodes.len);
+    defer dsu.deinit(alloc);
 
-    std.mem.sort([]const usize, circuits, {}, struct {
-        pub fn inner(_: void, lhs: []const usize, rhs: []const usize) bool {
-            return lhs.len > rhs.len;
-        }
-    }.inner);
+    // for (ds) |dis| {
+    //     const a = nodes[dis.i];
+    //     const b = nodes[dis.j];
+    //     std.debug.print("({d}, {d}, {d}) - ({d}, {d}, {d})\n", .{ a.x, a.y, a.z, b.x, b.y, b.z });
+    // }
 
-    for (circuits) |c| {
-        for (c) |n| {
-            std.debug.print("{d} ", .{n});
-        }
-        std.debug.print("\n", .{});
+    var last_joined: usize = 0;
+    for (0.., ds[0..1000]) |i, distance| {
+        // std.debug.print("\nJoining\n", .{});
+        last_joined = i;
+        dsu.join(distance.i, distance.j);
     }
 
-    const largest_to_sum = 3;
+    dsu.flatten();
+
+    const sizes = try dsu.computeSetSizes(alloc);
+    defer alloc.free(sizes);
+
+    std.mem.sort(usize, sizes, {}, std.sort.desc(usize));
+
+    // for (0.., dsu.parents) |i, p| {
+    //     std.debug.print("{d} --> {d} \n", .{ i, p });
+    // }
+    // std.debug.print("\nSizes: ", .{});
+    // for (sizes) |s| {
+    //     std.debug.print("{d} ", .{s});
+    // }
+    // std.debug.print("\n", .{});
+
     var part_one: usize = 1;
-    for (0..largest_to_sum) |i| {
-        part_one *= circuits[i].len;
+    for (0..3) |i| {
+        part_one *= sizes[i];
     }
+
     std.debug.print("Part one: {d}\n", .{part_one});
+
+    while (!dsu.allInSameCircuit()) {
+        last_joined += 1;
+        dsu.join(ds[last_joined].i, ds[last_joined].j);
+    }
+
+    std.debug.print("Part two: {d}\n", .{nodes[ds[last_joined].i].x * nodes[ds[last_joined].j].x});
 }
 
-const NodeGrid = struct {
-    const Cell = struct {
-        distance: f64,
-        connected: bool,
-    };
-    const NodesAndDistance = struct {
-        i: usize,
-        j: usize,
-        distance: f64,
-    };
+const DisjointSetUnion = struct {
+    parents: []usize,
 
-    nodes: []const Node,
-    adjacency_matrix: []Cell,
-    sorted_by_closest_distance: []NodesAndDistance,
-    last_conected_index: usize,
-
-    fn cell_at(self: *const NodeGrid, a: usize, b: usize) *Cell {
-        return &self.adjacency_matrix[a * self.nodes.len + b];
+    fn init(alloc: std.mem.Allocator, size: usize) !DisjointSetUnion {
+        const parents = try alloc.alloc(usize, size);
+        for (0..size) |i| {
+            parents[i] = i;
+        }
+        return .{ .parents = parents };
     }
 
-    fn is_reachable_from(self: *const NodeGrid, a: usize, b: usize, skip: ?usize) bool {
-        // if (skip) |s| {
-        //     std.debug.print("Is {d} reachable from {d} skipping {d}?\n", .{ a, b, s });
-        // } else {
-        //     std.debug.print("Is {d} reachable from {d}?\n", .{ a, b });
-        // }
-        const cell = self.cell_at(a, b);
-        if (cell.connected) {
-            return true;
-        }
-        for (0..self.nodes.len) |i| {
-            if (i == a or i == b or (skip != null and skip.? == i)) {
-                continue;
-            }
-            if (self.cell_at(i, b).connected and self.is_reachable_from(a, i, b)) {
-                return true;
-            }
-        }
-        return false;
+    fn deinit(self: *DisjointSetUnion, alloc: std.mem.Allocator) void {
+        return alloc.free(self.parents);
     }
 
-    fn connect_closest(self: *NodeGrid) ?struct { usize, usize } {
-        // var best: ?NodesAndDistance = null;
-        // for (0..self.nodes.len) |i| {
-        //     for (0..self.nodes.len) |j| {
-        //         // std.debug.print("Looking at ({d}, {d})\n", .{ i, j });
-        //         const cell = self.cell_at(i, j);
-        //         if (cell.connected or self.is_reachable_from(i, j, null)) {
-        //             continue;
-        //         }
-        //         if (best == null or best.?.distance > cell.distance) {
-        //             best = .{
-        //                 .i = i,
-        //                 .j = j,
-        //                 .distance = cell.distance,
-        //             };
-        //         }
-        //     }
-        // }
-        // if (best) |b| {
-        //     self.cell_at(b.i, b.j).connected = true;
-        //     self.cell_at(b.j, b.i).connected = true;
-        //     return .{ b.i, b.j };
-        // } else {
-        //     return null;
-        // }
-
-        for (self.last_conected_index..self.sorted_by_closest_distance.len) |i| {
-            const closest = self.sorted_by_closest_distance[i];
-            if (!self.is_reachable_from(closest.i, closest.j, null)) {
-                self.cell_at(closest.i, closest.j).connected = true;
-                self.cell_at(closest.j, closest.i).connected = true;
-                self.last_conected_index = i;
-                return .{ closest.i, closest.j };
-            }
+    fn find(self: *DisjointSetUnion, x: usize) usize {
+        if (self.parents[x] != x) {
+            self.parents[x] = self.find(self.parents[x]);
         }
-
-        return null;
+        return self.parents[x];
     }
 
-    fn compute_circuits(self: *const NodeGrid, alloc: std.mem.Allocator) ![][]const usize {
-        const evaluated = try alloc.alloc(bool, self.nodes.len);
-        defer alloc.free(evaluated);
-        for (evaluated) |*b| {
-            b.* = false;
+    fn flatten(self: *DisjointSetUnion) void {
+        for (0..self.parents.len) |i| {
+            _ = self.find(i);
         }
-        var circuits = try std.ArrayList([]const usize).initCapacity(alloc, 0);
-
-        while (std.mem.indexOf(bool, evaluated, &[1]bool{false})) |i| {
-            var current_circuit = try std.ArrayList(usize).initCapacity(alloc, 0);
-            for (0..self.nodes.len) |n| {
-                if (self.is_reachable_from(i, n, null)) {
-                    evaluated[n] = true;
-                    try current_circuit.append(alloc, n);
-                }
-            }
-            try circuits.append(alloc, try current_circuit.toOwnedSlice(alloc));
-        }
-
-        return circuits.toOwnedSlice(alloc);
     }
 
-    fn deinit(self: *NodeGrid, alloc: std.mem.Allocator) void {
-        alloc.free(self.nodes);
-        alloc.free(self.adjacency_matrix);
-        alloc.free(self.sorted_by_closest_distance);
+    fn computeSetSizes(self: *const DisjointSetUnion, alloc: std.mem.Allocator) ![]usize {
+        var sizes = try alloc.alloc(usize, self.parents.len);
+        for (sizes) |*s| {
+            s.* = 0;
+        }
+        for (self.parents) |p| {
+            sizes[p] += 1;
+        }
+        return sizes;
+    }
+
+    fn join(self: *DisjointSetUnion, parent: usize, subset: usize) void {
+        self.parents[self.find(subset)] = self.find(parent);
+    }
+
+    fn allInSameCircuit(self: *DisjointSetUnion) bool {
+        const parent = self.find(0);
+        for (1..self.parents.len) |i| {
+            if (parent != self.find(i)) {
+                return false;
+            }
+        }
+        return true;
     }
 };
 
@@ -172,54 +126,47 @@ const Node = struct {
     z: i64,
 };
 
-pub fn parse_nodes(alloc: std.mem.Allocator, content: []const u8) !NodeGrid {
-    var lines = std.mem.tokenizeScalar(u8, content, '\n');
-    var node_list = try std.ArrayList(Node).initCapacity(alloc, 0);
-    while (lines.next()) |line| {
-        var coords = std.mem.tokenizeScalar(u8, line, ',');
-        try node_list.append(alloc, .{
-            .x = try std.fmt.parseInt(i64, coords.next().?, 10),
-            .y = try std.fmt.parseInt(i64, coords.next().?, 10),
-            .z = try std.fmt.parseInt(i64, coords.next().?, 10),
-        });
-    }
+const NodesAndDistance = struct {
+    i: usize,
+    j: usize,
+    distance_squared: u64,
+};
 
-    const nodes = try node_list.toOwnedSlice(alloc);
-    var matrix = try alloc.alloc(NodeGrid.Cell, nodes.len * nodes.len);
-    var closest_nodes = try std.ArrayList(NodeGrid.NodesAndDistance).initCapacity(alloc, nodes.len * 2);
-
+fn distances(alloc: std.mem.Allocator, nodes: []const Node) ![]NodesAndDistance {
+    var list = try std.ArrayList(NodesAndDistance).initCapacity(alloc, 0);
     for (0..nodes.len) |i| {
-        const a = &nodes[i];
-        for (0..nodes.len) |j| {
-            const b = &nodes[j];
-            const dx = a.x - b.x;
-            const dy = a.y - b.y;
-            const dz = a.z - b.z;
-            const tmp: f64 = @floatFromInt(dx * dx + dy * dy + dz * dz);
-            const distance = @sqrt(tmp);
-            matrix[i * nodes.len + j] = NodeGrid.Cell{
-                .distance = distance,
-                .connected = i == j,
-            };
-            try closest_nodes.append(alloc, .{
-                .distance = distance,
+        for (0..i) |j| {
+            const dx: i64 = nodes[i].x - nodes[j].x;
+            const dy: i64 = nodes[i].y - nodes[j].y;
+            const dz: i64 = nodes[i].z - nodes[j].z;
+            const distance_squared: u64 = @intCast(dx * dx + dy * dy + dz * dz);
+            try list.append(alloc, .{
                 .i = i,
                 .j = j,
+                .distance_squared = distance_squared,
             });
         }
     }
-
-    const sorted_by_closest_distance = try closest_nodes.toOwnedSlice(alloc);
-    std.mem.sort(NodeGrid.NodesAndDistance, sorted_by_closest_distance, {}, struct {
-        fn inner(_: void, lhs: NodeGrid.NodesAndDistance, rhs: NodeGrid.NodesAndDistance) bool {
-            return lhs.distance > rhs.distance;
+    const d = try list.toOwnedSlice(alloc);
+    std.mem.sort(NodesAndDistance, d, {}, struct {
+        fn lessThan(_: void, lhs: NodesAndDistance, rhs: NodesAndDistance) bool {
+            return lhs.distance_squared < rhs.distance_squared;
         }
-    }.inner);
+    }.lessThan);
 
-    return NodeGrid{
-        .adjacency_matrix = matrix,
-        .nodes = nodes,
-        .sorted_by_closest_distance = sorted_by_closest_distance,
-        .last_conected_index = 0,
-    };
+    return d;
+}
+
+fn loadNodes(alloc: std.mem.Allocator, content: []const u8) ![]Node {
+    var iter = std.mem.tokenizeScalar(u8, content, '\n');
+    var nodes = try std.ArrayList(Node).initCapacity(alloc, 0);
+    while (iter.next()) |i| {
+        var numbers = std.mem.tokenizeScalar(u8, i, ',');
+        try nodes.append(alloc, .{
+            .x = try std.fmt.parseInt(i64, numbers.next().?, 10),
+            .y = try std.fmt.parseInt(i64, numbers.next().?, 10),
+            .z = try std.fmt.parseInt(i64, numbers.next().?, 10),
+        });
+    }
+    return nodes.toOwnedSlice(alloc);
 }
